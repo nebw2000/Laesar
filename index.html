@@ -27,6 +27,7 @@ let currentEffect=0, nextEffect=1, effectAlpha=0, effectVariant=0, subVariant=0;
 let lastPeakTime=0, beatTimes=[], estimatedBPM=120;
 let audioBufferSource, audioElement;
 
+// Farb-Helper
 function getColor(freq,i){
   const r=(freq*2+i*3)%255;
   const g=(255-freq+i*2)%255;
@@ -35,7 +36,7 @@ function getColor(freq,i){
 }
 function avg(arr){ return arr.reduce((a,b)=>a+b,0)/arr.length; }
 
-// Audio laden & decodieren
+// MP3 Upload & Start
 document.getElementById("audiofile").addEventListener("change", async function(e){
   const file = e.target.files[0];
   if(!file) return;
@@ -58,7 +59,6 @@ document.getElementById("audiofile").addEventListener("change", async function(e
   analyser.connect(audioCtx.destination);
   audioBufferSource.start();
 
-  // Für Aufnahme / Stream
   if(audioElement) audioElement.pause();
   audioElement = new Audio(URL.createObjectURL(file));
   audioElement.loop = true;
@@ -93,7 +93,7 @@ function detectBeat(data){
   }
 }
 
-// Effekte mit Untervarianten
+// Effekte
 function drawEffect(effectNum,bass,mids,highs,alpha,variant,sub){
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -204,7 +204,6 @@ document.getElementById("downloadBtn").addEventListener("click", function(){
     a.href=url; a.download="laser_show_mega.webm"; a.click();
   };
   recorder.start();
-  audioElement.play();
   setTimeout(()=>recorder.stop(),30000); // 30 Sekunden
 });
 
