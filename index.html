@@ -58,7 +58,7 @@ document.getElementById("audiofile").addEventListener("change", async function(e
   analyser.connect(audioCtx.destination);
   audioBufferSource.start();
 
-  // Für Aufnahme
+  // Für Aufnahme / Stream
   if(audioElement) audioElement.pause();
   audioElement = new Audio(URL.createObjectURL(file));
   audioElement.loop = true;
