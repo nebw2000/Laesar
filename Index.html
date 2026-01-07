@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Laser Show Mega MP3</title>
+<style>
+  body, html { margin:0; padding:0; width:100%; height:100%; background:black; overflow:hidden; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  canvas { display:block; background:black; }
+  #controls { margin:10px; color:white; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <input type="file" id="audiofile" accept="audio/*">
+  <button id="downloadBtn">Animation speichern</button>
+</div>
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let audioCtx, analyser, source, dataArray, bufferLength;
+let currentEffect=0, nextEffect=1, effectAlpha=0, effectVariant=0, subVariant=0;
+let lastPeakTime=0, beatTimes=[], estimatedBPM=120;
+let audioBufferSource;
+let audioElement; // Für Aufnahme und Stream
+
+// Farben
+function getColor(freq,i){
+  const r=(freq*2+i*3)%255;
+  const g=(255-freq+i*2)%255;
+  const b=(freq*3-i*5)%255;
+  return `rgb(${r},${g},${b})`;
+}
+function avg(arr){ return arr.reduce((a,b)=>a+b,0)/arr.length; }
+
+// Musik hochladen & decodieren
+document.getElementById("audiofile").addEventListener("change", async function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  
+  if(audioCtx) audioCtx.close();
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  bufferLength = analyser.frequencyBinCount;
+  dataArray = new Uint8Array(bufferLength);
+
+  const arrayBuffer = await file.arrayBuffer();
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+  if(audioBufferSource) audioBufferSource.stop();
+
+  audioBufferSource = audioCtx.createBufferSource();
+  audioBufferSource.buffer = audioBuffer;
+  audioBufferSource.loop = true;
+  audioBufferSource.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  audioBufferSource.start();
+
+  // Für Aufnahme
+  audioElement = new Audio(URL.createObjectURL(file));
+  audioElement.loop = true;
+  audioElement.play();
+});
+
+// Beat Detection
+function detectBeat(data){
+  const bass = data.slice(0, data.length/8);
+  const bassAvg = avg(bass);
+  const now = performance.now();
+  const threshold = avg(bass.slice(-10))*1.3 + 20;
+
+  if(bassAvg>threshold && now-lastPeakTime>150){
+    lastPeakTime=now;
+    beatTimes.push(now);
+    if(beatTimes.length>10) beatTimes.shift();
+    currentEffect = nextEffect;
+
+    // Zufall Effekt + Untervariante
+    nextEffect = Math.floor(Math.random()*6);
+    effectVariant = Math.floor(Math.random()*15);
+    subVariant = Math.floor(Math.random()*5);
+
+    effectAlpha=0;
+
+    if(beatTimes.length>=2){
+      const intervals=[];
+      for(let i=1;i<beatTimes.length;i++){
+        intervals.push(beatTimes[i]-beatTimes[i-1]);
+      }
+      estimatedBPM=60000/avg(intervals);
+    }
+  }
+}
+
+// Effekte (wie vorher mit Untervarianten)
+function drawEffect(effectNum,bass,mids,highs,alpha,variant,sub){
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const speedFactor = estimatedBPM/120;
+
+  if(effectNum===0){ // Bass-Kreis
+    const baseSize=avg(bass);
+    const size=baseSize*(0.5+variant/30)*(0.8+sub*0.05);
+    const angle=(performance.now()/1000)*((variant%5+1)*speedFactor + sub*0.2);
+    ctx.beginPath();
+    ctx.arc(canvas.width/2 + Math.sin(angle)*50, canvas.height/2 + Math.cos(angle)*50, size, 0, Math.PI*2);
+    ctx.fillStyle=getColor(baseSize,variant+sub);
+    ctx.fill();
+    ctx.closePath();
+  } else if(effectNum===1){ // Mitteln-Balken
+    const barWidth=canvas.width/mids.length;
+    let x=0;
+    for(let i=0;i<mids.length;i++){
+      let h=mids[i]/255*canvas.height/2;
+      h*=1+0.3*Math.sin(performance.now()/500*speedFactor + i*0.1*(variant+sub));
+      ctx.fillStyle = getColor(mids[i],i+variant+sub);
+      ctx.fillRect(x,canvas.height/4,barWidth,h);
+      x+=barWidth+1;
+    }
+  } else if(effectNum===2){ // Hoch-Funken
+    for(let i=0;i<highs.length;i+=5){
+      const val=highs[i];
+      const size=val/10*(0.5+variant/30)*(0.8+sub*0.05);
+      const xPos=Math.random()*canvas.width + Math.sin(performance.now()/1000*speedFactor*sub)*50;
+      const yPos=Math.random()*canvas.height + Math.cos(performance.now()/1000*speedFactor*sub)*50;
+      ctx.beginPath();
+      ctx.arc(xPos,yPos,size,0,Math.PI*2);
+      ctx.fillStyle=getColor(val,i+variant+sub);
+      ctx.fill();
+      ctx.closePath();
+    }
+  } else if(effectNum===3){ // Linien-Rotation
+    const angle=(performance.now()/500*speedFactor)*(variant%5+1) + sub*0.1;
+    for(let i=0;i<8;i++){
+      ctx.save();
+      ctx.translate(canvas.width/2,canvas.height/2);
+      ctx.rotate(angle + i*Math.PI/4);
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.lineTo(150+avg(bass)/2*(1+variant/30),0);
+      ctx.strokeStyle=getColor(avg(bass),i+variant+sub);
+      ctx.lineWidth=2+i+variant*0.1 + sub*0.1;
+      ctx.stroke();
+      ctx.closePath();
+      ctx.restore();
+    }
+  } else if(effectNum===4){ // Polygon-Pulse
+    const sides=6+Math.floor(avg(mids)/50)+variant%3+sub;
+    const radius=avg(bass)*(0.5+variant/30)*(0.8+sub*0.05);
+    const angleStep=(2*Math.PI)/sides;
+    ctx.beginPath();
+    for(let i=0;i<sides;i++){
+      const x=canvas.width/2 + radius*Math.cos(i*angleStep + variant*0.1 + sub*0.05);
+      const y=canvas.height/2 + radius*Math.sin(i*angleStep + variant*0.1 + sub*0.05);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle=getColor(avg(bass),variant+sub);
+    ctx.lineWidth=3+variant*0.1 + sub*0.05;
+    ctx.stroke();
+  } else if(effectNum===5){ // Strobe
+    const brightness=Math.random()*255*(0.5+variant/30)*(0.8+sub*0.05);
+    ctx.fillStyle=`rgb(${brightness},${brightness},${brightness})`;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+  }
+
+  ctx.restore();
+}
+
+// Animation
+function animate(){
+  requestAnimationFrame(animate);
+  if(!analyser) return;
+
+  analyser.getByteFrequencyData(dataArray);
+  const bass = dataArray.slice(0,bufferLength/8);
+  const mids = dataArray.slice(bufferLength/8,bufferLength/2);
+  const highs = dataArray.slice(bufferLength/2);
+
+  ctx.fillStyle="rgba(0,0,0,0.2)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  detectBeat(dataArray);
+  drawEffect(currentEffect,bass,mids,highs,effectAlpha,effectVariant,subVariant);
+  effectAlpha+=0.05;
+  if(effectAlpha>1) effectAlpha=1;
+}
+
+// Canvas Recording
+let recorder, recordedChunks=[];
+document.getElementById("downloadBtn").addEventListener("click", function(){
+  if(!audioElement) { alert("Lade zuerst eine Musikdatei hoch."); return; }
+  recordedChunks=[];
+  const stream = canvas.captureStream(60);
+  const audioStream = audioElement.captureStream();
+  const combined = new MediaStream([...stream.getVideoTracks(), ...audioStream.getAudioTracks()]);
+  recorder = new MediaRecorder(combined);
+  recorder.ondataavailable = e=>{ if(e.data.size>0) recordedChunks.push(e.data); };
+  recorder.onstop = ()=>{
+    const blob = new Blob(recordedChunks,{type:"video/webm"});
+    const url = URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download="laser_show_mega_mp3.webm"; a.click();
+  };
+  recorder.start();
+  audioElement.play();
+  setTimeout(()=>recorder.stop(),30000); // 30 Sekunden Aufnahme
+});
+
+animate();
+</script>
+</body>
+</html>
