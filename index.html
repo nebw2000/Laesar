@@ -51,6 +51,7 @@ canvas.height = innerHeight;
 let audioCtx, analyser, bufferLength, dataArray;
 let audioElement=null, sourceNode=null, micStream=null;
 let mode = "none"; // "mp3" oder "mic"
+let lastAudioSrc = null; // speichert zuletzt geladene MP3
 
 let currentEffect=0, nextEffect=0, effectAlpha=1;
 let variant=0, subVariant=0;
@@ -84,10 +85,12 @@ document.getElementById("audiofile").addEventListener("change", async e=>{
 
   stopAll();
 
+  lastAudioSrc = URL.createObjectURL(file); // speichert MP3 für Toggle
+
   audioCtx=new AudioContext();
   setupAnalyser();
 
-  audioElement=new Audio(URL.createObjectURL(file));
+  audioElement=new Audio(lastAudioSrc);
   audioElement.loop=true;
   sourceNode=audioCtx.createMediaElementSource(audioElement);
   sourceNode.connect(analyser);
@@ -101,6 +104,7 @@ document.getElementById("audiofile").addEventListener("change", async e=>{
 // Toggle Button MP3 ↔ Mic
 document.getElementById("toggleBtn").onclick=async()=>{
   if(mode==="mp3"){
+    // Wechsel zu Mikrofon
     stopAll();
     audioCtx=new AudioContext();
     setupAnalyser();
@@ -111,11 +115,25 @@ document.getElementById("toggleBtn").onclick=async()=>{
     statusEl.textContent="Status: Mikrofon aktiv";
   }
   else if(mode==="mic"){
+    // Wechsel zurück zur letzten MP3
+    if(!lastAudioSrc){
+      statusEl.textContent="Status: keine MP3 geladen";
+      return;
+    }
     stopAll();
-    statusEl.textContent="Status: MP3 wählen";
-    document.getElementById("audiofile").click();
+    audioCtx=new AudioContext();
+    setupAnalyser();
+    audioElement=new Audio(lastAudioSrc);
+    audioElement.loop=true;
+    sourceNode=audioCtx.createMediaElementSource(audioElement);
+    sourceNode.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    audioElement.play();
+    mode="mp3";
+    statusEl.textContent="Status: MP3 aktiv";
   }
   else{
+    // Startzustand: MP3 laden
     document.getElementById("audiofile").click();
   }
 };
@@ -244,7 +262,7 @@ document.getElementById("downloadBtn").onclick=()=>{
     a.click();
   };
   rec.start();
-  setTimeout(()=>rec.stop(),30000); // 30 Sekunden Aufnahme
+  setTimeout(()=>rec.stop(),30000);
 };
 
 animate();
